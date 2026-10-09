@@ -1,0 +1,6 @@
+{
+  "name": "file-automation",
+  "bin": {
+    "file-automation": "bin/file-automation.js"
+  }
+}
