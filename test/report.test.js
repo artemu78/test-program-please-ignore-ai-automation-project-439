@@ -62,21 +62,23 @@ function runCommand(
   );
 }
 
-test("files prints a count of top-level files only", () => {
+test("files prints file counts recursively including subdirectories", () => {
   const { inputDirectory, outputDirectory } = createInputFiles();
 
   const filesOutput = runCommand("files", inputDirectory, outputDirectory);
   assert.equal(
     filesOutput,
-    "Файлов найдено: 6\n" +
-      "Табличных документов: 2, текстовых: 1, непарсимых: 3\n" +
-    "Документов: 2, требуют ручного разбора: 1, посторонних: 3\n" +
-    "Копий найдено: 0 в 0 группах\n" +
-    `Реестр: ${path.relative(process.cwd(), path.join(outputDirectory, "registry.csv"))}\n`,
+    "Файлов найдено: 8\n" +
+      "Табличных документов: 3, текстовых: 2, непарсимых: 3\n" +
+      "Документов: 4, требуют ручного разбора: 1, посторонних: 3\n" +
+      "Копий найдено: 1 в 1 группах\n" +
+      `Реестр: ${path.relative(process.cwd(), path.join(outputDirectory, "registry.csv"))}\n`,
   );
   const registry = fs.readFileSync(path.join(outputDirectory, "registry.csv"), "utf8");
   assert.match(registry, /^путь,имя,тип,размер,хеш,статус,основная копия,строк,колонки/u);
-  assert.equal(registry.trim().split("\n").length, 7);
+  assert.equal(registry.trim().split("\n").length, 9);
+  assert.match(registry, /Архив\/contacts\.csv,contacts\.csv,табличный документ/u);
+  assert.match(registry, /Архив\/dogovor\.txt,dogovor\.txt,текстовый документ/u);
 });
 
 test("files uses ./out by default", () => {
@@ -130,13 +132,13 @@ test("files writes table details and escapes registry CSV fields", () => {
   ]);
 });
 
-test("file collection includes metadata and skips directories", () => {
+test("file collection includes metadata and traverses directories recursively", () => {
   const { inputDirectory } = createInputFiles();
 
   const files = collectFiles(inputDirectory);
-  assert.equal(files.length, 6);
+  assert.equal(files.length, 8);
   assert.deepEqual(
-    files.find(({ name }) => name === "dogovor.txt"),
+    files.find(({ path: filePath }) => filePath === "dogovor.txt"),
     {
       path: "dogovor.txt",
       name: "dogovor.txt",
@@ -146,8 +148,19 @@ test("file collection includes metadata and skips directories", () => {
       extension: ".txt",
     },
   );
+  assert.deepEqual(
+    files.find(({ path: filePath }) => filePath === "Архив/dogovor.txt"),
+    {
+      path: "Архив/dogovor.txt",
+      name: "dogovor.txt",
+      fullPath: path.join(inputDirectory, "Архив", "dogovor.txt"),
+      size: Buffer.byteLength("Договор"),
+      content: Buffer.from("Договор"),
+      extension: ".txt",
+    },
+  );
   assert.equal(files.find(({ name }) => name === ".DS_Store").extension, "");
-  assert.equal(files.some(({ path: filePath }) => filePath.startsWith("Архив/")), false);
+  assert.equal(files.some(({ path: filePath }) => filePath.startsWith("Архив/")), true);
 });
 
 test("file types use signatures before extensions and every file has a status", () => {
@@ -245,7 +258,7 @@ test("files groups byte-identical and normalized-name copies deterministically",
   );
 });
 
-test("contacts command creates reports from top-level files", () => {
+test("contacts command creates reports including nested files", () => {
   const { inputDirectory, outputDirectory } = createInputFiles();
 
   const contactsOutput = runCommand("contacts", inputDirectory, outputDirectory);
@@ -255,22 +268,35 @@ test("contacts command creates reports from top-level files", () => {
   const jsonText = fs.readFileSync(jsonPath, "utf8");
   const report = JSON.parse(jsonText);
 
-  assert.equal(report.files.stats.totalFiles, 6);
+  assert.equal(report.files.stats.totalFiles, 8);
   assert.deepEqual(report.files.manualReview, ["scan.pdf"]);
   assert.deepEqual(report.files.irrelevant, [".DS_Store", "empty.csv", "logo.png"]);
-  assert.equal(report.files.stats.duplicateFiles, 0);
-  assert.equal(report.files.stats.duplicateGroups, 0);
+  assert.equal(report.files.stats.duplicateFiles, 1);
+  assert.equal(report.files.stats.duplicateGroups, 1);
   assert.deepEqual(report.files.registry[0], {
     path: ".DS_Store",
     duplicateOf: null,
   });
-  assert.equal(report.contacts.stats.sourceCount, 1);
-  assert.equal(report.contacts.stats.acceptedRecords, 1);
-  assert.equal(report.contacts.stats.uniqueContacts, 1);
+  assert.equal(report.contacts.stats.sourceCount, 2);
+  assert.equal(report.contacts.stats.acceptedRecords, 3);
+  assert.equal(report.contacts.stats.uniqueContacts, 2);
   assert.equal(report.contacts.stats.rejectedRecords, 1);
-  assert.doesNotMatch(textReport, /Архив\//u);
-  assert.match(textReport, /Копии: 0 в 0 группах/u);
+  assert.match(textReport, /Архив\/contacts\.csv/u);
+  assert.match(textReport, /Копии: 1 в 1 группах/u);
   assert.match(textReport, /kontakty\.csv/u);
   assert.match(contactsOutput, /Отчёт для программ:/u);
   assert.equal(fs.readFileSync(jsonPath, "utf8"), jsonText);
+});
+
+test("file collection traverses arbitrary nesting depths", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  const deepDirectory = path.join(inputDirectory, "a", "b", "c", "d");
+  fs.mkdirSync(deepDirectory, { recursive: true });
+  fs.writeFileSync(path.join(deepDirectory, "deep.txt"), "глубокий файл");
+
+  const files = collectFiles(inputDirectory);
+  assert.equal(files.length, 1);
+  assert.equal(files[0].path, "a/b/c/d/deep.txt");
+  assert.equal(files[0].name, "deep.txt");
 });
