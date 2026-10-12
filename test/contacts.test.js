@@ -24,7 +24,7 @@ test("contacts maps CSV and JSON columns and reports unrecognized columns", () =
   fs.mkdirSync(inputDirectory);
   fs.writeFileSync(
     path.join(inputDirectory, "unknown-name.csv"),
-    "\uFEFFФИО ; Моб. телефон ; E-mail ; Должность\nАлиса;89215551495;alice@example.com;Менеджер\n",
+    "\uFEFFФИО ; Моб. телефон ; E-mail ; Должность\nАЛИСА НЕСТЕРОВА;8-921-555-14-95; USER001@EXAMPLE.COM ;Менеджер\nКороткий;123;no-at;Стажёр\nБез данных;-;NULL;Неизвестно\n",
   );
   fs.writeFileSync(
     path.join(inputDirectory, "another-unexpected-name.json"),
@@ -40,22 +40,36 @@ test("contacts maps CSV and JSON columns and reports unrecognized columns", () =
 
   assert.deepEqual(imports.sources, [
     { file: "another-unexpected-name.json", records: 1 },
-    { file: "unknown-name.csv", records: 1 },
+    { file: "unknown-name.csv", records: 3 },
   ]);
   assert.deepEqual(imports.records, [
     {
       имя: "Борис",
-      телефон: "+74995554442",
+      телефон: "74995554442",
       почта: "",
       источник: "another-unexpected-name.json",
     },
     {
-      имя: "Алиса",
-      телефон: "89215551495",
-      почта: "alice@example.com",
+      имя: "Алиса Нестерова",
+      телефон: "79215551495",
+      почта: "user001@example.com",
+      источник: "unknown-name.csv",
+    },
+    {
+      имя: "Короткий",
+      телефон: "",
+      почта: "",
+      источник: "unknown-name.csv",
+    },
+    {
+      имя: "Без Данных",
+      телефон: "",
+      почта: "",
       источник: "unknown-name.csv",
     },
   ]);
+  assert.equal(imports.rejectedValues, 2);
+  assert.equal(imports.recordsWithoutPhoneAndEmail, 2);
   assert.deepEqual(imports.unmappedColumns, [
     { column: "company", source: "another-unexpected-name.json" },
     { column: "Должность", source: "unknown-name.csv" },
@@ -71,8 +85,12 @@ test("contacts maps CSV and JSON columns and reports unrecognized columns", () =
   );
   assert.deepEqual(report.contacts.records, imports.records);
   assert.match(output, /another-unexpected-name\.json: записей 1/u);
-  assert.match(output, /unknown-name\.csv: записей 1/u);
-  assert.match(output, /Выгрузок прочитано: 2, записей: 2/u);
+  assert.match(output, /unknown-name\.csv: записей 3/u);
+  assert.match(output, /Выгрузок прочитано: 2, записей: 4/u);
+  assert.match(
+    output,
+    /Отбраковано значений: 2, записей без телефона и почты: 2/u,
+  );
   assert.match(
     output,
     /Колонки без соответствия: company \(another-unexpected-name\.json\), Должность \(unknown-name\.csv\)/u,
