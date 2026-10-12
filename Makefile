@@ -8,6 +8,6 @@ lint:
 	npx eslint .
 
 test:
-	node --test
+	node --test test/*.js
 
 .PHONY: install setup lint test

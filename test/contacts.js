@@ -3,16 +3,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { afterEach, test } = (function getRunner() {
-  if (typeof globalThis.test === "function" && typeof globalThis.afterEach === "function") {
-    return globalThis;
-  }
-  try {
-    return require("vitest");
-  } catch {
-    return require("node:test");
-  }
-})();
+const { afterEach, test } = require("node:test");
 const { analyzeFiles } = require("../lib/analyze");
 const { readContactExports } = require("../lib/contacts");
 

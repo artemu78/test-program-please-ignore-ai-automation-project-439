@@ -6,7 +6,7 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "test": "node --test"
+    "test": "node --test test/*.js"
   },
   "dependencies": {
     "as-table": "^1.0.55",
