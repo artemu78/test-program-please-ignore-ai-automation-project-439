@@ -61,7 +61,8 @@ test("files prints a count of top-level files only", () => {
     filesOutput,
     "Файлов найдено: 6\n" +
       "Табличных документов: 2, текстовых: 1, непарсимых: 3\n" +
-      "Документов: 2, требуют ручного разбора: 1, посторонних: 3\n",
+    "Документов: 2, требуют ручного разбора: 1, посторонних: 3\n" +
+    "Копий найдено: 0 в 0 группах\n",
   );
   assert.equal(fs.existsSync(outputDirectory), false);
 });
@@ -135,6 +136,49 @@ test("file types use signatures before extensions and every file has a status", 
   );
 });
 
+test("files groups byte-identical and normalized-name copies deterministically", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  fs.mkdirSync(inputDirectory);
+  const write = (name, content) =>
+    fs.writeFileSync(path.join(inputDirectory, name), content);
+
+  write("same-content.txt", "identical bytes");
+  write("unrelated-name.bin", "identical bytes");
+  write("СЧЁТ.csv", "first version");
+  write("Счёт (1).csv", "second version");
+  write("Копия счёт.csv", "third version");
+  write("счёт.txt", "different extension");
+
+  const analysis = analyzeFiles(inputDirectory);
+  const registry = Object.fromEntries(
+    analysis.files.map(({ path: filePath, duplicateOf }) => [filePath, duplicateOf]),
+  );
+
+  assert.equal(analysis.stats.duplicateFiles, 3);
+  assert.equal(analysis.stats.duplicateGroups, 2);
+  assert.deepEqual(
+    analysis.duplicateGroups.map(({ primary, files }) => ({ primary, files })),
+    [
+      {
+        primary: "same-content.txt",
+        files: ["same-content.txt", "unrelated-name.bin"],
+      },
+      {
+        primary: "Копия счёт.csv",
+        files: ["Копия счёт.csv", "СЧЁТ.csv", "Счёт (1).csv"],
+      },
+    ],
+  );
+  assert.equal(registry["same-content.txt"], null);
+  assert.equal(registry["unrelated-name.bin"], "same-content.txt");
+  assert.equal(registry["Копия счёт.csv"], null);
+  assert.equal(registry["СЧЁТ.csv"], "Копия счёт.csv");
+  assert.equal(registry["Счёт (1).csv"], "Копия счёт.csv");
+  assert.equal(registry["счёт.txt"], null);
+  assert.match(runCommand("files", inputDirectory), /Копий найдено: 3 в 2 группах/u);
+});
+
 test("contacts command creates reports from top-level files", () => {
   const { inputDirectory, outputDirectory } = createInputFiles();
 
@@ -150,6 +194,10 @@ test("contacts command creates reports from top-level files", () => {
   assert.deepEqual(report.files.irrelevant, [".DS_Store", "empty.csv", "logo.png"]);
   assert.equal(report.files.stats.duplicateFiles, 0);
   assert.equal(report.files.stats.duplicateGroups, 0);
+  assert.deepEqual(report.files.registry[0], {
+    path: ".DS_Store",
+    duplicateOf: null,
+  });
   assert.equal(report.contacts.stats.sourceCount, 1);
   assert.equal(report.contacts.stats.acceptedRecords, 1);
   assert.equal(report.contacts.stats.uniqueContacts, 1);

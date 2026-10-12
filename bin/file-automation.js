@@ -31,6 +31,9 @@ for (const commandName of ["files", "contacts"]) {
           console.log(
             `Документов: ${stats.documents}, требуют ручного разбора: ${stats.manualReview}, посторонних: ${stats.irrelevant}`,
           );
+          console.log(
+            `Копий найдено: ${stats.duplicateFiles} в ${stats.duplicateGroups} группах`,
+          );
           return;
         }
         createReports(directory, options.out);
