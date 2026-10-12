@@ -1,5 +1,5 @@
 {
-  "name": "file-automation",
+  "name": "@hexlet/code",
   "version": "1.0.0",
   "bin": {
     "file-automation": "bin/file-automation.js"
