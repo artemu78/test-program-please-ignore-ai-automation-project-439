@@ -2,26 +2,27 @@
 const { Command } = require("commander");
 const path = require("node:path");
 const packageJson = require("../package.json");
-const { createReports } = require("../lib/report");
-const { analyzeFiles } = require("../lib/analyze");
+const { createReports, writeReportFiles } = require("../lib/report");
+const { analyzeContacts, analyzeFiles } = require("../lib/analyze");
 const { createRegistry } = require("../lib/registry");
 
 const program = new Command();
 
 program
-  .name(packageJson.name)
+  .name("file-automation")
   .description("Automate file processing")
-  .version(packageJson.version);
+  .version(packageJson.version)
+  .showHelpAfterError();
 
 for (const commandName of ["files", "contacts"]) {
   program
-    .command(`${commandName} <directory>`)
+    .command(`${commandName} <папка>`)
     .description(
       commandName === "files"
         ? "Analyze company files and create reports"
         : "Analyze contacts and create reports",
     )
-    .option("--out <directory>", "Directory for generated reports", "./out")
+    .option("--out <папка>", "Directory for generated reports", "./out")
     .action((directory, options) => {
       try {
         if (commandName === "files") {
@@ -30,17 +31,19 @@ for (const commandName of ["files", "contacts"]) {
           if (output === input || output.startsWith(`${input}${path.sep}`)) {
             throw new Error("Папка результата должна находиться вне папки с файлами.");
           }
-          const { stats, files } = analyzeFiles(input, output);
-          const registryPath = createRegistry(files, output);
-          console.log(`Файлов найдено: ${stats.totalFiles}`);
+          const fileAnalysis = analyzeFiles(input, output);
+          const registryPath = createRegistry(fileAnalysis.files, output);
+          const contactAnalysis = analyzeContacts(fileAnalysis.files);
+          writeReportFiles(fileAnalysis, contactAnalysis, output);
+          console.log(`Файлов найдено: ${fileAnalysis.stats.totalFiles}`);
           console.log(
-            `Табличных документов: ${stats.tabularFiles}, текстовых: ${stats.textFiles}, непарсимых: ${stats.unparsableFiles}`,
+            `Табличных документов: ${fileAnalysis.stats.tabularFiles}, текстовых: ${fileAnalysis.stats.textFiles}, непарсимых: ${fileAnalysis.stats.unparsableFiles}`,
           );
           console.log(
-            `Документов: ${stats.documents}, требуют ручного разбора: ${stats.manualReview}, посторонних: ${stats.irrelevant}`,
+            `Документов: ${fileAnalysis.stats.documents}, требуют ручного разбора: ${fileAnalysis.stats.manualReview}, посторонних: ${fileAnalysis.stats.irrelevant}`,
           );
           console.log(
-            `Копий найдено: ${stats.duplicateFiles} в ${stats.duplicateGroups} группах`,
+            `Копий найдено: ${fileAnalysis.stats.duplicateFiles} в ${fileAnalysis.stats.duplicateGroups} группах`,
           );
           console.log(
             `Реестр: ${path.relative(process.cwd(), registryPath) || registryPath}`,
@@ -55,10 +58,9 @@ for (const commandName of ["files", "contacts"]) {
     });
 }
 
-program.on("command:*", ([command]) => {
-  console.warn(`Warning: unknown command '${command}'.`);
+if (process.argv.length <= 2) {
   program.outputHelp();
-  process.exitCode = 1;
-});
+  process.exit(0);
+}
 
 program.parse(process.argv);
