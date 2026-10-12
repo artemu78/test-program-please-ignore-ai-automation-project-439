@@ -23,11 +23,35 @@
 ```bash
 git clone https://github.com/artemu78/test-program-please-ignore-ai-automation-project-439.git
 cd test-program-please-ignore-ai-automation-project-439
+npm install
 ```
 
 ## Использование
 
-<!-- Добавьте примеры запуска и запись asciinema — именно это смотрит работодатель -->
+Проверить JavaScript с помощью ESLint:
+
+```bash
+npm run lint
+```
+
+Команда `files` выводит число файлов непосредственно в указанной папке
+(содержимое вложенных папок пока не учитывается). Команда `contacts`
+создаёт общий отчёт в текстовом и JSON-форматах:
+
+```bash
+node bin/file-automation.js files ./company-files --out ./out
+node bin/file-automation.js contacts ./company-files --out ./out
+```
+
+Для `contacts` в `--out` появятся `report.txt` для чтения человеком и
+`report.json` для дальнейшей обработки программами. Если `--out` не указан,
+используется `./out`.
+
+Показать справку:
+
+```bash
+node bin/file-automation.js --help
+```
 
 ---
 
