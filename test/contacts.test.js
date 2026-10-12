@@ -87,12 +87,65 @@ test("contacts maps CSV and JSON columns and reports unrecognized columns", () =
   assert.match(output, /another-unexpected-name\.json: записей 1/u);
   assert.match(output, /unknown-name\.csv: записей 3/u);
   assert.match(output, /Выгрузок прочитано: 2, записей: 4/u);
+  assert.match(output, /Уникальных контактов: 2/u);
   assert.match(
     output,
     /Отбраковано значений: 2, записей без телефона и почты: 2/u,
   );
+  assert.match(output, /Таблица: .*contacts\.csv/u);
   assert.match(
     output,
     /Колонки без соответствия: company \(another-unexpected-name\.json\), Должность \(unknown-name\.csv\)/u,
+  );
+  assert.equal(fs.existsSync(path.join(outputDirectory, "contacts.csv")), true);
+});
+
+test("contacts merges duplicates by phone and email, complements fields, and writes contacts.csv", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  const outputDirectory = path.join(temporaryDirectory, "out");
+  fs.mkdirSync(inputDirectory);
+
+  fs.writeFileSync(
+    path.join(inputDirectory, "webinar.csv"),
+    "Имя,Телефон,E-mail\n" +
+      "Алиса Нестерова,+7 (921) 555-14-95,alice@example.com\n" +
+      "Борис,89991112233,\n" +
+      "Безымянный С Почтой,,anon@example.com\n" +
+      "Пустой Контакт,,\n",
+  );
+  fs.writeFileSync(
+    path.join(inputDirectory, "crm.csv"),
+    "ФИО;Моб. телефон;Почта\n" +
+      ";8-921-555-14-95;alice-new@example.com\n" +
+      "Борис Иванов;+7 (999) 111-22-33;boris@example.com\n" +
+      "Ещё Без Телефона;;anon@example.com\n" +
+      "Без Контактов;;\n",
+  );
+
+  const output = execFileSync(
+    process.execPath,
+    [cliPath, "contacts", inputDirectory, "--out", outputDirectory],
+    { encoding: "utf8" },
+  );
+
+  const contactsCsvPath = path.join(outputDirectory, "contacts.csv");
+  assert.equal(fs.existsSync(contactsCsvPath), true);
+  const contactsCsvContent = fs.readFileSync(contactsCsvPath, "utf8");
+
+  assert.match(output, /Выгрузок прочитано: 2, записей: 8/u);
+  assert.match(output, /Уникальных контактов: 3/u);
+  assert.match(
+    output,
+    /Отбраковано значений: 0, записей без телефона и почты: 2/u,
+  );
+  assert.match(output, /Таблица: .*contacts\.csv/u);
+
+  assert.equal(
+    contactsCsvContent,
+    "имя,телефон,почта,источники\n" +
+      "Алиса Нестерова,79215551495,alice-new@example.com,crm.csv; webinar.csv\n" +
+      "Борис Иванов,79991112233,boris@example.com,crm.csv; webinar.csv\n" +
+      "Ещё Без Телефона,,anon@example.com,crm.csv; webinar.csv\n",
   );
 });
