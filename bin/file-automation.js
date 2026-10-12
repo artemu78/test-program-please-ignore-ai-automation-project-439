@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 const { Command } = require("commander");
+const path = require("node:path");
 const packageJson = require("../package.json");
 const { createReports } = require("../lib/report");
 const { analyzeFiles } = require("../lib/analyze");
+const { createRegistry } = require("../lib/registry");
 
 const program = new Command();
 
@@ -23,7 +25,13 @@ for (const commandName of ["files", "contacts"]) {
     .action((directory, options) => {
       try {
         if (commandName === "files") {
-          const { stats } = analyzeFiles(directory);
+          const input = path.resolve(directory);
+          const output = path.resolve(options.out);
+          if (output === input || output.startsWith(`${input}${path.sep}`)) {
+            throw new Error("Папка результата должна находиться вне папки с файлами.");
+          }
+          const { stats, files } = analyzeFiles(input, output);
+          const registryPath = createRegistry(files, output);
           console.log(`Файлов найдено: ${stats.totalFiles}`);
           console.log(
             `Табличных документов: ${stats.tabularFiles}, текстовых: ${stats.textFiles}, непарсимых: ${stats.unparsableFiles}`,
@@ -33,6 +41,9 @@ for (const commandName of ["files", "contacts"]) {
           );
           console.log(
             `Копий найдено: ${stats.duplicateFiles} в ${stats.duplicateGroups} группах`,
+          );
+          console.log(
+            `Реестр: ${path.relative(process.cwd(), registryPath) || registryPath}`,
           );
           return;
         }

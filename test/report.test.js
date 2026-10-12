@@ -45,11 +45,20 @@ function createInputFiles() {
   return { inputDirectory, outputDirectory };
 }
 
-function runCommand(command, inputDirectory, outputDirectory) {
+function runCommand(
+  command,
+  inputDirectory,
+  outputDirectory,
+  workingDirectory = process.cwd(),
+) {
+  const args = [cliPath, command, inputDirectory];
+  if (outputDirectory) {
+    args.push("--out", outputDirectory);
+  }
   return execFileSync(
     process.execPath,
-    [cliPath, command, inputDirectory, "--out", outputDirectory],
-    { encoding: "utf8" },
+    args,
+    { cwd: workingDirectory, encoding: "utf8" },
   );
 }
 
@@ -62,9 +71,63 @@ test("files prints a count of top-level files only", () => {
     "Файлов найдено: 6\n" +
       "Табличных документов: 2, текстовых: 1, непарсимых: 3\n" +
     "Документов: 2, требуют ручного разбора: 1, посторонних: 3\n" +
-    "Копий найдено: 0 в 0 группах\n",
+    "Копий найдено: 0 в 0 группах\n" +
+    `Реестр: ${path.relative(process.cwd(), path.join(outputDirectory, "registry.csv"))}\n`,
   );
-  assert.equal(fs.existsSync(outputDirectory), false);
+  const registry = fs.readFileSync(path.join(outputDirectory, "registry.csv"), "utf8");
+  assert.match(registry, /^путь,имя,тип,размер,хеш,статус,основная копия,строк,колонки/u);
+  assert.equal(registry.trim().split("\n").length, 7);
+});
+
+test("files uses ./out by default", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  const outputDirectory = path.join(temporaryDirectory, "out");
+  fs.mkdirSync(inputDirectory);
+  fs.writeFileSync(path.join(inputDirectory, "notes.txt"), "текст");
+
+  const output = runCommand("files", inputDirectory, undefined, temporaryDirectory);
+
+  assert.match(output, /Реестр: out\/registry\.csv/u);
+  assert.equal(fs.existsSync(path.join(outputDirectory, "registry.csv")), true);
+});
+
+test("files writes table details and escapes registry CSV fields", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  const outputDirectory = path.join(temporaryDirectory, "nested", "out");
+  fs.mkdirSync(inputDirectory);
+  fs.writeFileSync(
+    path.join(inputDirectory, "a,b.csv"),
+    "\uFEFFИмя;Комментарий\nАлиса;значение, с запятой\nБоб;обычное\n",
+  );
+  fs.writeFileSync(
+    path.join(inputDirectory, "items.json"),
+    '[{"id":1,"name":"Алиса"},{"id":2,"amount":3}]',
+  );
+  fs.writeFileSync(path.join(inputDirectory, "notes.txt"), "текст");
+  fs.writeFileSync(path.join(inputDirectory, "scan.pdf"), "%PDF sample");
+  fs.writeFileSync(path.join(inputDirectory, "stray.bin"), "data");
+
+  const output = runCommand("files", inputDirectory, outputDirectory);
+  const registryPath = path.join(outputDirectory, "registry.csv");
+  const registry = fs.readFileSync(registryPath, "utf8");
+
+  assert.match(output, /Реестр: .*registry\.csv/u);
+  assert.match(registry, /"a,b\.csv","a,b\.csv",табличный документ/u);
+  assert.match(registry, /,документ,,2,"Имя, Комментарий"/u);
+  assert.match(registry, /items\.json,items\.json,табличный документ,[^,\n]+,[a-f0-9]{64},документ,,2,"id, name, amount"/u);
+  assert.match(registry, /notes\.txt,notes\.txt,текстовый документ,[^,\n]+,[a-f0-9]{64},документ,,,/u);
+  assert.match(registry, /scan\.pdf,scan\.pdf,непарсимый,[^,\n]+,[a-f0-9]{64},требует ручного разбора,,,/u);
+  assert.match(registry, /stray\.bin,stray\.bin,непарсимый,[^,\n]+,[a-f0-9]{64},постороннее,,,/u);
+  assert.equal(registry.trim().split("\n").length, 6);
+  assert.deepEqual(fs.readdirSync(inputDirectory).sort(), [
+    "a,b.csv",
+    "items.json",
+    "notes.txt",
+    "scan.pdf",
+    "stray.bin",
+  ]);
 });
 
 test("file collection includes metadata and skips directories", () => {
@@ -176,7 +239,10 @@ test("files groups byte-identical and normalized-name copies deterministically",
   assert.equal(registry["СЧЁТ.csv"], "Копия счёт.csv");
   assert.equal(registry["Счёт (1).csv"], "Копия счёт.csv");
   assert.equal(registry["счёт.txt"], null);
-  assert.match(runCommand("files", inputDirectory), /Копий найдено: 3 в 2 группах/u);
+  assert.match(
+    runCommand("files", inputDirectory, path.join(temporaryDirectory, "out")),
+    /Копий найдено: 3 в 2 группах/u,
+  );
 });
 
 test("contacts command creates reports from top-level files", () => {
