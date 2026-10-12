@@ -2,7 +2,7 @@
 const { Command } = require("commander");
 const packageJson = require("../package.json");
 const { createReports } = require("../lib/report");
-const { collectFiles } = require("../lib/analyze");
+const { analyzeFiles } = require("../lib/analyze");
 
 const program = new Command();
 
@@ -23,7 +23,14 @@ for (const commandName of ["files", "contacts"]) {
     .action((directory, options) => {
       try {
         if (commandName === "files") {
-          console.log(`Файлов найдено: ${collectFiles(directory).length}`);
+          const { stats } = analyzeFiles(directory);
+          console.log(`Файлов найдено: ${stats.totalFiles}`);
+          console.log(
+            `Табличных документов: ${stats.tabularFiles}, текстовых: ${stats.textFiles}, непарсимых: ${stats.unparsableFiles}`,
+          );
+          console.log(
+            `Документов: ${stats.documents}, требуют ручного разбора: ${stats.manualReview}, посторонних: ${stats.irrelevant}`,
+          );
           return;
         }
         createReports(directory, options.out);

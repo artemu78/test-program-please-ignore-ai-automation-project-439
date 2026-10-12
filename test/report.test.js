@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { afterEach, test } = require("node:test");
-const { collectFiles } = require("../lib/analyze");
+const { analyzeFiles, collectFiles } = require("../lib/analyze");
 
 const cliPath = path.resolve(__dirname, "../bin/file-automation.js");
 let temporaryDirectory;
@@ -57,7 +57,12 @@ test("files prints a count of top-level files only", () => {
   const { inputDirectory, outputDirectory } = createInputFiles();
 
   const filesOutput = runCommand("files", inputDirectory, outputDirectory);
-  assert.equal(filesOutput, "Файлов найдено: 6\n");
+  assert.equal(
+    filesOutput,
+    "Файлов найдено: 6\n" +
+      "Табличных документов: 2, текстовых: 1, непарсимых: 3\n" +
+      "Документов: 2, требуют ручного разбора: 1, посторонних: 3\n",
+  );
   assert.equal(fs.existsSync(outputDirectory), false);
 });
 
@@ -79,6 +84,55 @@ test("file collection includes metadata and skips directories", () => {
   );
   assert.equal(files.find(({ name }) => name === ".DS_Store").extension, "");
   assert.equal(files.some(({ path: filePath }) => filePath.startsWith("Архив/")), false);
+});
+
+test("file types use signatures before extensions and every file has a status", () => {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "file-automation-"));
+  const inputDirectory = path.join(temporaryDirectory, "company");
+  fs.mkdirSync(inputDirectory);
+  const write = (name, content) =>
+    fs.writeFileSync(path.join(inputDirectory, name), content);
+
+  write("renamed.txt", Buffer.from("%PDF content"));
+  write("scan", Buffer.from([0xff, 0xd8, 0xff, 0x00]));
+  write("workbook.csv", Buffer.from("PK\x03\x04"));
+  write("table.json", '[{"name":"Alice"}]');
+  write("notes.md", "Notes");
+  write("unknown.bin", "data");
+  write(".DS_Store", "metadata");
+  write("empty.csv", "");
+
+  const analysis = analyzeFiles(inputDirectory);
+  const files = Object.fromEntries(analysis.files.map((file) => [file.name, file]));
+
+  assert.equal(files["renamed.txt"].type, "unparsable");
+  assert.equal(files["renamed.txt"].status, "manualReview");
+  assert.equal(files.scan.type, "unparsable");
+  assert.equal(files.scan.status, "manualReview");
+  assert.equal(files["workbook.csv"].type, "unparsable");
+  assert.equal(files["workbook.csv"].status, "manualReview");
+  assert.equal(files["table.json"].type, "tabular");
+  assert.equal(files["table.json"].status, "document");
+  assert.equal(files["notes.md"].type, "text");
+  assert.equal(files["notes.md"].status, "document");
+  assert.equal(files["unknown.bin"].type, "unparsable");
+  assert.equal(files["unknown.bin"].status, "irrelevant");
+  assert.equal(files[".DS_Store"].status, "irrelevant");
+  assert.equal(files["empty.csv"].type, "tabular");
+  assert.equal(files["empty.csv"].status, "irrelevant");
+  assert.equal(analysis.stats.totalFiles, 8);
+  assert.equal(
+    analysis.stats.tabularFiles +
+      analysis.stats.textFiles +
+      analysis.stats.unparsableFiles,
+    analysis.stats.totalFiles,
+  );
+  assert.equal(
+    analysis.stats.documents +
+      analysis.stats.manualReview +
+      analysis.stats.irrelevant,
+    analysis.stats.totalFiles,
+  );
 });
 
 test("contacts command creates reports from top-level files", () => {
