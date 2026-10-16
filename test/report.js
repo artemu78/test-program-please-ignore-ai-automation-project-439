@@ -11,6 +11,7 @@ import {
   formatFileSummary,
   runFiles,
 } from "../lib/report.js";
+import { readContactExports } from "../lib/contacts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.resolve(__dirname, "../bin/file-automation.js");
@@ -79,7 +80,9 @@ test("files prints file counts recursively including subdirectories", () => {
       "Табличных документов: 3, текстовых: 2, непарсимых: 3\n" +
       "Документов: 4, требуют ручного разбора: 1, посторонних: 3\n" +
       "Копий найдено: 1 в 1 группах\n" +
-      `Реестр: ${path.relative(process.cwd(), path.join(outputDirectory, "registry.csv"))}\n`,
+      `Реестр: ${path.relative(process.cwd(), path.join(outputDirectory, "registry.csv"))}\n` +
+      `Отчёт: ${path.relative(process.cwd(), path.join(outputDirectory, "report.txt"))}\n` +
+      `Отчёт для программ: ${path.relative(process.cwd(), path.join(outputDirectory, "report.json"))}\n`,
   );
   const registry = fs.readFileSync(path.join(outputDirectory, "registry.csv"), "utf8");
   assert.match(registry, /^путь,имя,тип,размер,хеш,статус,основная копия,строк,колонки/u);
@@ -383,6 +386,8 @@ test("runFiles can be invoked programmatically as a module", () => {
   assert.equal(fs.existsSync(path.join(outputDirectory, "report.json")), true);
   assert.equal(logs.some((line) => line.startsWith("Файлов найдено:")), true);
   assert.equal(logs.some((line) => line.startsWith("Реестр:")), true);
+  assert.equal(logs.some((line) => line.startsWith("Отчёт:")), true);
+  assert.equal(logs.some((line) => line.startsWith("Отчёт для программ:")), true);
 });
 
 test("formatFileSummary is the single source of truth for formatted file metrics", () => {
@@ -428,4 +433,41 @@ test("formatFileSummary is the single source of truth for formatted file metrics
   assert.equal(reportText.includes(summary[0]), true);
   assert.equal(reportText.includes(summary[1]), true);
   assert.equal(reportText.includes(summary[2]), true);
+});
+
+test("files command outputs registry, report, and report.json paths and includes table reference in report.txt", () => {
+  const { inputDirectory, outputDirectory } = createInputFiles();
+  const output = runCommand("files", inputDirectory, outputDirectory);
+
+  assert.match(output, /Реестр: .*registry\.csv/u);
+  assert.match(output, /Отчёт: .*report\.txt/u);
+  assert.match(output, /Отчёт для программ: .*report\.json/u);
+
+  const reportText = fs.readFileSync(path.join(outputDirectory, "report.txt"), "utf8");
+  assert.match(reportText, /Таблица: .*contacts\.csv/u);
+});
+
+test("contacts command terminal output does not print file-level statistics or source table", () => {
+  const { inputDirectory, outputDirectory } = createInputFiles();
+  const output = runCommand("contacts", inputDirectory, outputDirectory);
+
+  assert.doesNotMatch(output, /Файлов найдено:/u);
+  assert.doesNotMatch(output, /Табличных документов:/u);
+  assert.doesNotMatch(output, /Место, занимаемое лишними копиями:/u);
+  assert.doesNotMatch(output, /---------------------------/u);
+  assert.match(output, /Таблица: .*contacts\.csv/u);
+  assert.match(output, /Отчёт: .*report\.txt/u);
+  assert.match(output, /Отчёт для программ: .*report\.json/u);
+});
+
+test("company-files dataset produces exactly 11 rejected values and 5 records without phone and email", () => {
+  const companyDir = path.resolve(__dirname, "../company-files");
+  if (!fs.existsSync(companyDir)) {
+    return;
+  }
+  const { files } = analyzeFiles(companyDir);
+  const contactExports = readContactExports(files);
+
+  assert.equal(contactExports.rejectedValues, 11);
+  assert.equal(contactExports.recordsWithoutPhoneAndEmail, 5);
 });
