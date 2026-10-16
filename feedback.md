@@ -1,0 +1,9 @@
+- Нет import/export — весь проект на CommonJS. Нарушение пункта «Только современный JavaScript: модули подключаются через import и export»
+- Логика команд в точке входа - ветка files в bin/file-automation.js: цепочка analyzeFiles → createRegistry → analyzeContacts → writeReportFiles + 5 строк сводки прямо в .action(), и эти же строки продублированы вторым экземпляром в lib/report.js (createReports). Нарушены требования «Точка входа не содержит логики команд» и требование об одном месте значений.
+- Непонятно почему тут ру локаль и не понятно почему в regexp только русское: копия https://github.com/artemu78/test-program-please-ignore-ai-automation-project-439/blob/f72dfac74122cc0b401ac7d5871d3709864d1070/lib/analyze.js#L101
+- normalizePhone только ру номер. это по заданию так было?
+- https://github.com/artemu78/test-program-please-ignore-ai-automation-project-439/blob/f72dfac74122cc0b401ac7d5871d3709864d1070/lib/registry.js#L34 тут if/else выходят одинаковыми?
+- 2024/отчет.xlsx и 2025/отчет.xlsx такой тест если файлы разные по содержимому пройдет, все будет работать?
+- ключ слияния телефон || почта расщепляет одного человека на два контакта
+- в таких местах нужен try/catch https://github.com/artemu78/test-program-please-ignore-ai-automation-project-439/blob/f72dfac74122cc0b401ac7d5871d3709864d1070/lib/tabular.js#L56
+- https://github.com/artemu78/test-program-please-ignore-ai-automation-project-439/blob/f72dfac74122cc0b401ac7d5871d3709864d1070/lib/analyze.js#L56 тут OOM будет на больших каталогах\файлах

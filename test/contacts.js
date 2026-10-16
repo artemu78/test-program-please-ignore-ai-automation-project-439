@@ -1,12 +1,14 @@
-const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { afterEach, test } = require("node:test");
-const { analyzeFiles } = require("../lib/analyze");
-const { readContactExports } = require("../lib/contacts");
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { analyzeFiles } from "../lib/analyze.js";
+import { readContactExports } from "../lib/contacts.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.resolve(__dirname, "../bin/file-automation.js");
 let temporaryDirectory;
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-const { Command } = require("commander");
-const path = require("node:path");
-const packageJson = require("../package.json");
-const { createReports, writeReportFiles } = require("../lib/report");
-const { analyzeContacts, analyzeFiles } = require("../lib/analyze");
-const { createRegistry } = require("../lib/registry");
+import fs from "node:fs";
+import { Command } from "commander";
+import { runContacts, runFiles } from "../lib/report.js";
+
+const packageJson = JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
 
 const program = new Command();
 
@@ -14,49 +15,31 @@ program
   .version(packageJson.version)
   .showHelpAfterError();
 
-for (const commandName of ["files", "contacts"]) {
-  program
-    .command(`${commandName} <папка>`)
-    .description(
-      commandName === "files"
-        ? "Analyze company files and create reports"
-        : "Analyze contacts and create reports",
-    )
-    .option("--out <папка>", "Directory for generated reports", "./out")
-    .action((directory, options) => {
-      try {
-        if (commandName === "files") {
-          const input = path.resolve(directory);
-          const output = path.resolve(options.out);
-          if (output === input || output.startsWith(`${input}${path.sep}`)) {
-            throw new Error("Папка результата должна находиться вне папки с файлами.");
-          }
-          const fileAnalysis = analyzeFiles(input, output);
-          const registryPath = createRegistry(fileAnalysis.files, output);
-          const contactAnalysis = analyzeContacts(fileAnalysis.files);
-          writeReportFiles(fileAnalysis, contactAnalysis, output);
-          console.log(`Файлов найдено: ${fileAnalysis.stats.totalFiles}`);
-          console.log(
-            `Табличных документов: ${fileAnalysis.stats.tabularFiles}, текстовых: ${fileAnalysis.stats.textFiles}, непарсимых: ${fileAnalysis.stats.unparsableFiles}`,
-          );
-          console.log(
-            `Документов: ${fileAnalysis.stats.documents}, требуют ручного разбора: ${fileAnalysis.stats.manualReview}, посторонних: ${fileAnalysis.stats.irrelevant}`,
-          );
-          console.log(
-            `Копий найдено: ${fileAnalysis.stats.duplicateFiles} в ${fileAnalysis.stats.duplicateGroups} группах`,
-          );
-          console.log(
-            `Реестр: ${path.relative(process.cwd(), registryPath) || registryPath}`,
-          );
-          return;
-        }
-        createReports(directory, options.out);
-      } catch (error) {
-        console.error(`Не удалось выполнить команду: ${error.message}`);
-        process.exitCode = 1;
-      }
-    });
-}
+program
+  .command("files <папка>")
+  .description("Analyze company files and create reports")
+  .option("--out <папка>", "Directory for generated reports", "./out")
+  .action((directory, options) => {
+    try {
+      runFiles(directory, options.out);
+    } catch (error) {
+      console.error(`Не удалось выполнить команду: ${error.message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("contacts <папка>")
+  .description("Analyze contacts and create reports")
+  .option("--out <папка>", "Directory for generated reports", "./out")
+  .action((directory, options) => {
+    try {
+      runContacts(directory, options.out);
+    } catch (error) {
+      console.error(`Не удалось выполнить команду: ${error.message}`);
+      process.exitCode = 1;
+    }
+  });
 
 if (process.argv.length <= 2) {
   program.outputHelp();

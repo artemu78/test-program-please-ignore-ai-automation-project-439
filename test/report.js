@@ -1,11 +1,18 @@
-const assert = require("node:assert/strict");
-const { execFileSync } = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { afterEach, test } = require("node:test");
-const { analyzeFiles, collectFiles } = require("../lib/analyze");
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { analyzeFiles, collectFiles } from "../lib/analyze.js";
+import {
+  createTextReport,
+  formatFileSummary,
+  runFiles,
+} from "../lib/report.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.resolve(__dirname, "../bin/file-automation.js");
 let temporaryDirectory;
 
@@ -299,4 +306,126 @@ test("file collection traverses arbitrary nesting depths", () => {
   assert.equal(files.length, 1);
   assert.equal(files[0].path, "a/b/c/d/deep.txt");
   assert.equal(files[0].name, "deep.txt");
+});
+
+test("project configuration and source files use ES Modules (import/export)", () => {
+  const packageJsonPath = path.resolve(__dirname, "../package.json");
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+  assert.equal(packageJson.type, "module");
+
+  const sourceDirs = [
+    path.resolve(__dirname, "../bin"),
+    path.resolve(__dirname, "../lib"),
+  ];
+
+  for (const dir of sourceDirs) {
+    const entries = fs.readdirSync(dir).filter((file) => file.endsWith(".js"));
+    for (const file of entries) {
+      const code = fs.readFileSync(path.join(dir, file), "utf8");
+      assert.doesNotMatch(
+        code,
+        /\bmodule\.exports\b/u,
+        `${file} should not use module.exports`,
+      );
+      assert.doesNotMatch(
+        code,
+        /\brequire\s*\(/u,
+        `${file} should not use require()`,
+      );
+    }
+  }
+});
+
+test("CLI entry point does not contain command orchestration logic", () => {
+  const cliContent = fs.readFileSync(cliPath, "utf8");
+
+  assert.doesNotMatch(
+    cliContent,
+    /\banalyzeFiles\b/u,
+    "bin/file-automation.js should not call analyzeFiles directly",
+  );
+  assert.doesNotMatch(
+    cliContent,
+    /\bcreateRegistry\b/u,
+    "bin/file-automation.js should not call createRegistry directly",
+  );
+  assert.doesNotMatch(
+    cliContent,
+    /\banalyzeContacts\b/u,
+    "bin/file-automation.js should not call analyzeContacts directly",
+  );
+  assert.match(
+    cliContent,
+    /\brunFiles\s*\(/u,
+    "bin/file-automation.js should delegate to runFiles",
+  );
+  assert.match(
+    cliContent,
+    /\brunContacts\s*\(/u,
+    "bin/file-automation.js should delegate to runContacts",
+  );
+});
+
+test("runFiles can be invoked programmatically as a module", () => {
+  const { inputDirectory, outputDirectory } = createInputFiles();
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (message) => logs.push(message);
+
+  try {
+    runFiles(inputDirectory, outputDirectory);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(fs.existsSync(path.join(outputDirectory, "registry.csv")), true);
+  assert.equal(fs.existsSync(path.join(outputDirectory, "report.txt")), true);
+  assert.equal(fs.existsSync(path.join(outputDirectory, "report.json")), true);
+  assert.equal(logs.some((line) => line.startsWith("Файлов найдено:")), true);
+  assert.equal(logs.some((line) => line.startsWith("Реестр:")), true);
+});
+
+test("formatFileSummary is the single source of truth for formatted file metrics", () => {
+  const stats = {
+    totalFiles: 10,
+    tabularFiles: 5,
+    textFiles: 3,
+    unparsableFiles: 2,
+    documents: 7,
+    manualReview: 2,
+    irrelevant: 1,
+    duplicateFiles: 2,
+    duplicateGroups: 1,
+    duplicateExtraBytes: 100,
+  };
+
+  const summary = formatFileSummary(stats);
+  assert.deepEqual(summary, [
+    "Файлов найдено: 10",
+    "Табличных документов: 5, текстовых: 3, непарсимых: 2",
+    "Документов: 7, требуют ручного разбора: 2, посторонних: 1",
+    "Копий найдено: 2 в 1 группах",
+  ]);
+
+  const reportText = createTextReport(
+    { stats, manualReview: [], irrelevant: [], duplicateGroups: [] },
+    {
+      stats: {
+        sourceCount: 0,
+        recordsRead: 0,
+        acceptedRecords: 0,
+        uniqueContacts: 0,
+        rejectedRecords: 0,
+        rejectedValues: 0,
+        recordsWithoutPhoneAndEmail: 0,
+      },
+      sources: [],
+      imports: [],
+      unmappedColumns: [],
+    },
+  );
+
+  assert.equal(reportText.includes(summary[0]), true);
+  assert.equal(reportText.includes(summary[1]), true);
+  assert.equal(reportText.includes(summary[2]), true);
 });
